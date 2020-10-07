@@ -34,13 +34,13 @@ fn generate_unmarshallers(
         .map(|message_descriptor| {
             (
                 message_descriptor.get_name().to_owned(),
-                Box::new(generate_message_unmarshaler(message_descriptor)),
+                Box::new(generate_message_unmarshaller(message_descriptor)),
             )
         })
         .collect()
 }
 
-fn generate_message_unmarshaler(
+fn generate_message_unmarshaller(
     message_descriptor: protobuf::reflect::MessageDescriptor,
 ) -> Unmarshaller {
     move |_json| {
