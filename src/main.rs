@@ -1,36 +1,54 @@
-#![feature(trait_alias)]
-
-use std::collections::HashMap;
+#![feature(type_alias_impl_trait)]
 
 use protobuf::Message;
+use std::collections::HashMap;
+
+type Unmarshaller = impl Fn(&str) -> Box<dyn protobuf::MessageDyn>;
 
 fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let file_descriptor_set = protobuf::descriptor::FileDescriptorSet::parse_from_bytes(
         include_bytes!("fixture.descriptor"),
     )?;
     // convert from a vector of FileDescriptorProtos to FileDescriptors
-    let file_descriptors = protobuf::reflect::FileDescriptor::new_dynamic_fds(file_descriptor_set.file);
-    let unmarshalers = file_descriptors.into_iter().map(
-        |file_descriptor| (file_descriptor.proto().get_name().to_owned(), generate_unmarshalers(file_descriptor))
-    ).collect::<HashMap<_, _>>();
-    unmarshalers["fixture.proto"]["MessageFixture"]("json data would go here");
+    let file_descriptors =
+        protobuf::reflect::FileDescriptor::new_dynamic_fds(file_descriptor_set.file);
+    let unmarshallers = file_descriptors
+        .into_iter()
+        .map(|file_descriptor| {
+            (
+                file_descriptor.proto().get_name().to_owned(),
+                generate_unmarshallers(file_descriptor),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    unmarshallers["fixture.proto"]["MessageFixture"]("json data would go here");
     Ok(())
 }
 
-fn generate_unmarshalers(file_descriptor: protobuf::reflect::FileDescriptor) -> HashMap<String, Box<impl Fn(&str) -> Box<dyn protobuf::MessageDyn>>> {
-    file_descriptor.messages().into_iter().map(
-        |message_descriptor| (message_descriptor.get_name().to_owned(), Box::new(generate_message_unmarshaler(message_descriptor)))
-    ).collect()
+fn generate_unmarshallers(
+    file_descriptor: protobuf::reflect::FileDescriptor,
+) -> HashMap<String, Box<Unmarshaller>> {
+    file_descriptor
+        .messages()
+        .into_iter()
+        .map(|message_descriptor| {
+            (
+                message_descriptor.get_name().to_owned(),
+                Box::new(generate_message_unmarshaler(message_descriptor)),
+            )
+        })
+        .collect()
 }
 
-fn generate_message_unmarshaler(message_descriptor: protobuf::reflect::MessageDescriptor) -> impl Fn(&str) -> Box<dyn protobuf::MessageDyn> {
-    move |json| {
+fn generate_message_unmarshaler(
+    message_descriptor: protobuf::reflect::MessageDescriptor,
+) -> Unmarshaller {
+    move |_json| {
         // TODO: parse json
-        let mut msg = message_descriptor.new_instance();
-        let msg_fields = msg.mut_unknown_fields_dyn();
+        let msg = message_descriptor.new_instance();
         for field in message_descriptor.fields() {
             // TODO: fill msg with data from parsed json
-            // Example: field.set_singular_field(&mut *msg, protobuf::reflect::ReflectValueBox::I32(1234));
+            // Example of setting field: field.set_singular_field(&mut *msg, protobuf::reflect::ReflectValueBox::I32(1234));
             // exact invocation depends on field type.
             println!(
                 "{:?}: {:?} {:?} (repeated={:?}, map={:?})",
